@@ -1,19 +1,12 @@
-import NextAuth from "next-auth/next";
-import GoogleProviders from "next-auth/providers/google";
-import { connectToDatabase } from "@utils/database";
+import NextAuth from "next-auth";
+import GoogleProvider from "next-auth/providers/google";
 
-import { User } from "@models/user";
-
-// console.log({
-//   clientId: process.env.GOOGLE_ID,
-//   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-// });
-
-
+import User from "@models/user";
+import { connectToDB } from "@utils/database";
 
 const handler = NextAuth({
   providers: [
-    GoogleProviders({
+    GoogleProvider({
       clientId: process.env.GOOGLE_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     }),
@@ -21,39 +14,38 @@ const handler = NextAuth({
 
   callbacks: {
     async session({ session }) {
-      // * We look for the user in the database
-      const userSession = await User.findOne({ email: session.user.email });
+      // store the user id from MongoDB to session
+      const sessionUser = await User.findOne({ email: session.user.email });
+      session.user.id = sessionUser._id.toString();
 
-      // * We add the user id to the session object
-      session.user.id = userSession._id.toString();
-
-      return session; // * return the session object
+      return session;
     },
 
-    async signIn({ profile }) {
-      try {
-        // * We are connecting to the database
-        await connectToDatabase();
+    async signIn({ account, profile, user, credentials }) {
+      console.log("profil", profile);
 
-        // * check if a user already exists
+      try {
+        await connectToDB();
+
+        // check if user already exists
         const userExists = await User.findOne({ email: profile.email });
 
-        // * if not, create a new user
+        // if not, create a new document and save user in MongoDB
         if (!userExists) {
           await User.create({
             email: profile.email,
             username: profile.name.replace(" ", "").toLowerCase(),
             image: profile.picture,
           });
-        };
+        }
 
         return true;
       } catch (error) {
-        console.log(error);
+        console.log("Error checking if user exists: ", error.message);
         return false;
       }
     },
-  }
+  },
 });
 
 export { handler as GET, handler as POST };
